@@ -1,0 +1,7 @@
+hey copy w1 and w2 files  into HDFS the mapper and reducer function stay in local generates results
+This is the secound line! lets see if it adds to the counts of our words more
+and third line here about running a pig script and running it from commandline
+This is the secound line! lets see if it adds to the counts of our words more
+and third line here about running a pig script and running it from commandline
+This is the secound line! lets see if it adds to the counts of our words more
+and third line here about running a pig script and running it from commandline

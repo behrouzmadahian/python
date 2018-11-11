@@ -1,0 +1,37 @@
+intro to mrjob library
+mrjob is a python MapReduce library, created by Yelp, that wraps Hadoop sreaming, allowing MapReduce applications to be written in 
+a more pythonic way.
+it allows multi step mapreduce jobs to be written in pure Python. MapReduce jobs written with mrjob can be tested
+ 1.locally, 2. run on a Hadoop cluster, 3. run in the cloud using Amazon Elastic MapReduce(EMR)
+writing mapreduce applications with mrjobs has many benefits
+1- mrjob is currently a very actively developed framework
+2- mrjob has extensive documentation!
+3- mrjob applications can be executed and tested without having Hadoop installed!, enabling development and testing before deploying to a Hadoop Cluster
+4- mrjob allows MapReduce applications to be written in a single class, instead of writing separate programs for the mapper and reducer.
+
+DRWABACK:
+mrjob is simplified, so it does not give the same level of access to Hadoop that other APIs offer
+mrjob does not use the typedbytes so other libraries might be faster.
+
+INSTALLATION:
+$sudo pip instal mrjobs
+##
+Running mrjob locally from commandline:
+
+$python wordcount_in_mrjob.py w*.txt
+
+by default mrjob runs locally, allowing code to be developed and debugged before being submitted to a Hadoop cluster.
+to change how the job is run, specify -r [--runner]:
+#ON CLUSTER:
+#1- set the hadoop home explicitly:
+$export HADOOP_HOME="/usr/lib/hadoop-0.20-mapreduce"
+python wordcount_in_mrjob.py -r hadoop --hadoop-bin /usr/bin/hadoop  hdfs:/user/cloudera/someText/w*.txt > mrjob.Wcount.out.txt
+
+Run in a single python process:
+$python wordcount_in_mrjob.py -r inline w*.txt
+
+Run locally in a few subprocesses simulating some hadoop features
+$python wordcount_in_mrjob.py -r local w*.txt
+
+
+

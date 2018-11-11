@@ -1,0 +1,24 @@
+#1- list the contents of users's home directory on HDFS:
+$ hdfs dfs -ls
+#1-a listing the contents of the root directory:
+$ hdfs dfs -ls /
+
+#2- making a directory under home directory(here /user/cloudera/)
+$ hdfd dfd -mkdir behrouz ## or $ hdfs dfs -mkdir /user/cloudera/behrouz
+#3- copying data to hdfs:
+$hdfs dfs -put /home/cloudera/myfile.txt /user/cloudera/behrouz
+#4- seeing content of a file:
+$hdfs dfs -cat /user/cloudera/myfile.txt
+
+#5- copying back to local
+$hdfs dfs -get /user/cloudera/myfile.txt /home/cloudera/
+#6- removing files from hdfs:
+$hdfs dfs -rm /user/cloudera/myfile.txt
+#7- removing folders from hdfs:
+$hdfs dfs -rm -r /user/cloudera/behrouz
+#8- the following shows all available commands:
+$hdfs dfs
+#9- getting help on commands:
+$hdfs dfs -help -rm
+
+

@@ -1,0 +1,47 @@
+pig is composed of two major parts:
+1- high level data flow language: Pig Latin
+2- an engin that parses, optimizes, and executes ht ePig latin Scripts as a series of MapReduce jobs that run on a Hadoop cluster.
+compared to java MapReduce, is easier to write, understand and maintain.
+Pig is highly extensible through User Defined Functions (UDF) which allow custom processing to be written in many languages such as Python.
+After data is processed in HDFS it can be stored bck into HDFS.
+
+We can write a pig script in a *.pig file and run it from commandline locally or on cluster:
+
+comment symbol in  pig script is: --
+running pig from commandline locally:
+$pig  -x local wcount.pig 
+on cluster:
+pig -x mapreduce wcount.pig
+
+saving log data such as Describe, dump results into a log:
+$pig -x local wcount.pig > wcount.log
+ each line in the script should finish with semicolon!
+#some comments on load statement:
+load '/home/cloudera/pig_n_python/' USING PigStorange('\n') AS (linesin:chararray);
+1- the default loading function is PigStorage with Default delimiter: \t.
+2- USING and loader are optional and if ommited it defaults to PigStorage and \t delimiter.
+3- AS allows to define fields and filed types. any field not defined defaults to bite array.
+4- say each input has 4 field and we define two, thus two named field we have and two positional fields defaulted to bytearray.
+
+example of filter: we can use AND, OR, and NOT as well!!
+r = FILTER student BY age>=20;
+
+store:
+if the output directory exitst, the store operator will fail.
+add: fs -rmr home/cloudera/output/ 
+at the begining of the script to remove the output folder and does not fail!
+#no quotation si required since it is a shell command!
+good for re-running the script several times.
+
+
+
+
+
+
+
+
+
+
+
+
+

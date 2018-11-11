@@ -1,0 +1,179 @@
+setting up pyspark on the cloudera vm:
+$sudo easy_install ipython==1.2.1
+
+launch pyspark with Ipython:
+$PYSPARK_DRIVER_PYTHON=ipython pyspark
+
+Resilient distributed datasets are the data containers- the way python stores data. its like a variable in programming.
+
+examples:
+int_rdd = sc.parallelize(range(10),3): a list of 10 numbers and divides it into 3 partitions and distributes it over cluster:
+int_rdd.collect() : collect the RDD and shows it!
+int_rdd.glom().collect(): shows the RDD but it also shows how its partitioned.
+
+reading text file:
+1-local:
+f=sc.textFile("file:///home/cloudera/spark_with_python/testfile1")
+2- HDFS:
+f=sc.textFile("/user/cloudera/input/testfile1")
+
+f.take(5):  copy 5 lines of dataset back to the driver!
+
+flatmap():
+it's like map function. It generates a flat list. applies a function to all elements of your RDD.
+if you want to generate key-value pairs you have to use "map"
+
+Example:
+def split_words(line):
+    return line.split()
+def create_pair(word):
+    return(word,1)
+pairs_rdd=f.flatmap(split_words).map(create_pair)
+
+lets return the word counts
+def sum_counts(a,b):
+    return (a+b)
+
+results=pairs_rdd.reduceByKey(sum_counts)
+results.collect()
+
+SPARK TRANSFORMATIONS:
+filter:
+def starts_with_a(word):
+    return word.lower().startswith('a')
+f1=s.flatmap(split_words)
+f2=f1.filter(starts_with_a)
+
+sometimes the partitions resulted fom applying some functions are not of the same size or we have several of them and joining these
+partitions into smaller number of partitions results in some performance gain.
+we use "coalesce(n) to condence the partiotions into 'n' partitions.
+f1=sc.parallelize(range(20),5)
+f1.glom().collect()
+f2=f1.coalesce(3)
+f2.flom().collect()
+
+Wide transformations:
+All transformations so far are narrow.
+narrow transformations are those that happen locally and does not imply transferring data through the network.
+WIDE transformations:
+groupByKey()
+reduceByKey()
+when we use groupByKey it returns a iterable and  not a list. in order to retrieve data:
+for k,v in pairs_rdd.groupByKey().collect():
+   print 'key: ',k, ', values: ',list(v)
+
+repartition(numPart):
+similar to coalesce. shuffles all data to increase or decrease number of partiotions to make an even
+distribution of your partitions all over the cluster of nodes.
+generally you should do coalesce first. if local merging of partitions is good enough for your application. 
+if data as a result of mapping is very uneven on different nodes use repartition()
+
+shuffle:
+global redistribution of data. very expensive and high impact on performance.
+It is very important to know when you are trigerring a shufle and avoid unnecessary ones.
+all wide transformations trigger shuffle.
+example: if you eventually gonna reduceByKey, do not use groupByKey.
+since reduceByKey applies the function first locally and then transfers less data over the netword for global reduceByKey.
+
+JOIN:
+given rdd1 of (k,v) and rdd2 of (k,w): returns (k,(v,w)).
+rdd3=rdd1.join(rdd2)
+
+distinct():
+returns a new RDD containing only the distinct elements from the source RDD.
+rdd1=sc.parallelize([1,2,2,2,2,3,4],2)
+rdd_dist=rdd1.distinct().collect()
+
+takeOrdered(r,key=func):
+returns the first r elements of an rdd in natural order ot a specified by the function func
+EXAMPLE: returning top four elements of an RDD in descending order:
+rdd=sc.parallelize([6,1,5,1,4,3])
+rdd.takeOrdered(4,lambda x:-x)
+********************************************
+ACTIONS IN SPARK:
+spark build a DAG of our data analysis pipeline and when we finally choose the last step-which is an action-
+spark sends all the tasks for execution to the nodes.
+collect(), take() are actions. they copy the results to the driver memory. if the results ar bigger that driver's memory
+there is an opportunity to write them directly to HDFS.
+Action: final stage of the workflow, triggers executuon of the DAG, Returns results to the driver ot writes to HDFS.
+reduce(func): we have a large array of values, we are running reduce repeatedly to generate result which is one value
+saveAsTextFile(filename): save to local or HDFS.
+
+getting top 100 elements of an RDD:
+rdd1.take(100).collect()
+***********************************
+MEMORY CACHING IN SPARK:
+if we have an RDD that we want to use in another pipeline or reuse in future, we can cache it into memory for faster access.
+using:
+myrdd.cache()
+this action is lazy meaning it will not cache right away.! 
+the first time that this RDD us going to be computed, then it will be stored in memory from that point on.
+*************************************************
+SHARED VARIABLES:
+1- broadcast variables, 2- accumulators
+broadcast variables:
+large variables used in all nodes.
+transfer just once from driver to each executor. 
+efficient peer to peer transfer.
+sometimes you have a large variable and you want to use this variable in all of your nodes for computation.
+its good for large look-up tables, configuration tables, joining two datasets.
+EXAMPLE: broadcasting a dictionary variable:
+config=sc.broadcast({'order':3,'filter':True})
+config.value will be available at each node at execution time!
+***
+ACCUMULATORS:
+they are shared variables. they are quite common when you want to accumulate variables across you cluster.
+for example, you are procesing a text file and you want to count the number of bad values for example and you want to
+be able to from all of your nodes concurrently write and accumulate into a variable.
+example:
+accum=sc.accumulator(0)  #initial value of our accumulator is zero.
+def test_accum(x):
+    accum.add(x)
+
+sc.parallelize([1,2,3,4]).foreach(test_accum)
+accum.value
+*************************************************
+EXECUTING PYTON spark code:
+#execute it using: local means use one worker node . local[4]: use 4 worker nodes. you can remove --master and local and run it on the vm
+
+$spark-submit --master local wordCount.py >wordCount.log
+by adding wordCount.log we can save the results of print statement in the log file!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

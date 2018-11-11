@@ -1,0 +1,1 @@
+hey, copy w1 and w2 files  into HDFS the mapper and reducer function stay in local. generates results

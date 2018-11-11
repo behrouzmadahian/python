@@ -1,0 +1,1 @@
+#Key values must be separated by tabs! if not hadoop considers both of them as key and value will be null!
