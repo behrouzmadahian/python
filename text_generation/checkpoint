@@ -1,0 +1,2 @@
+model_checkpoint_path: "C:/behrouz/PythonCodes/ML/text_generation/textgenModel.ckpt"
+all_model_checkpoint_paths: "C:/behrouz/PythonCodes/ML/text_generation/textgenModel.ckpt"
