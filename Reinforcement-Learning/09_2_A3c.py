@@ -523,7 +523,6 @@ with tf.Session() as sess:
         worker_work = lambda: worker.work(max_episode_length, gamma, lmbda, sess, coord, saver)
         t = threading.Thread(target=worker_work)
         t.start()
-        time.sleep(0.5)
         worker_threads.append(t)
     coord.join(worker_threads)
     # after all threads finish, I will save the parameters of target network to file!!
