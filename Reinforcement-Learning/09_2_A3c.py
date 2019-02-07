@@ -192,7 +192,7 @@ SUMMARY_PATH = "./9-summaryFolder/train_"
 
 # Worker Agent
 class Worker(object):
-    def __init__(self, game, name, s_size, a_size, optimizer, model_path, global_episodes):
+    def __init__(self, game, name, s_size, a_size, optimizer, model_path, global_episodes, lock):
         """
         :param game: environment for the game
         :param name: scope name
@@ -201,6 +201,8 @@ class Worker(object):
         :param optimizer: optimizer used for back propagation
         :param model_path: path to save the model
         :param global_episodes: counter for global number of episodes!
+        :param lock: threading.lock, prevents threads to simultaneously write on each other
+                       while one worker is performing gradient update, other workers wait for it to finish!
         """
         self.name = "worker_" + str(name)
         self.model_path = model_path
@@ -211,6 +213,7 @@ class Worker(object):
         self.episode_lengths = [] 
         self.episode_mean_values = []
         self.summary_writer = tf.summary.FileWriter(SUMMARY_PATH + str(self.name))
+        self.lock = lock
 
         # Create the local copy of the network
         self.local_agent = ACNetwork(s_size, a_size, self.name, optimizer)
@@ -249,7 +252,7 @@ class Worker(object):
         # End Doom set-up
         self.env = game
 
-    def train(self, rollout, sess, gamma, lmbda, bootstrap_value):
+    def train(self, rollout, sess, gamma, lmbda, bootstrap_value, gae=True):
         """
         One step of update and loss calculation
         reset of RNN state:
@@ -278,6 +281,8 @@ class Worker(object):
                                 We need that: remember- original Advantage estimate:
                                     Grad (Policy) = Grad(logP * (rt+ gamma *V(s_t+1) - V(st))
                                 Thus we run the model for s_t+1 and get the V(s_t+1)
+        :param gae: if True, use generalized Advantage estimation technique for estimating advantage
+                    equivalently, lmbda=0 -> in derivation it's equivalent, numerically, results in 0^0!!!
         :return:
              for current worker:
              average value loss, average policy loss, average entropy loss,
@@ -297,10 +302,11 @@ class Worker(object):
         self.rewards_plus = np.asarray(rewards.tolist() + [bootstrap_value])
         discounted_rewards = discount(self.rewards_plus, gamma)[:-1]
         self.value_plus = np.asarray(values.tolist() + [bootstrap_value])
-        # residual advantages: delta = rt + gamma*V(s_t+1) - V(st)
-        resid_advantages = rewards + gamma * self.value_plus[1:] - self.value_plus[:-1]
-        adv_dicount = gamma * lmbda
-        advantages_gae = discount(resid_advantages, adv_dicount)
+        # advantages = rt + gamma*V(s_t+1) - V(st)
+        advantages = rewards + gamma * self.value_plus[1:] - self.value_plus[:-1]
+        if GAE:
+            adv_dicount = gamma * lmbda
+            advantages_gae = discount(advantages, adv_dicount)
         # self.batch_rnn_state will get initialized before train is called in work()
         feed_dict = {self.local_agent.target_v: discounted_rewards,  # used to update value function
                      self.local_agent.inputs: np.vstack(observations),
@@ -399,7 +405,8 @@ class Worker(object):
                             print('Shape of Batch State=', state_rnn_batch1[1].shape, '=======================')
 
                             # Training
-                            v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, v1)
+                            with self.lock:
+                                v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, v1)
                             print('STEP size in training =', step_size)
                             # empty the episode buffer. the new experiences in current episode will be added
                             # and self.batch_rnn_state encapsulate the memory of previous experiences in the episode
@@ -410,7 +417,8 @@ class Worker(object):
                             break
                     # Update the network using the episode buffer at the end of the episode.
                     if len(episode_buffer) != 0:
-                        v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, 0.0)
+                        with self.lock:
+                            v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, 0.0)
                         sess.run(self.update_local_ops)
                         # total_steps += 1
                     self.episode_rewards.append(episode_reward)
@@ -444,19 +452,23 @@ class Worker(object):
                         self.summary_writer.add_summary(summary, episode_count)
 
                         self.summary_writer.flush()
-                    # if self.name == 'worker_0':
-                    #     sess.run(self.increment)
-                    sess.run(self.increment)
+                    if self.name == 'worker_0':
+                        with self.lock:
+                            sess.run(self.increment)
                     episode_count += 1
                     total_episodes = sess.run(self.global_episodes)
-                    assert (total_episodes <= MAX_STEPS), "MAX total steps for training reached- optimization finished"
+                    assert (total_episodes <= MAX_STEPS), "MAX episodes for training reached- optimization finished"
 
 
 """
 We can finish the optimization at the end of MAX_Updates
 across all workers, or Updates for ONe worker as well!
+We finish optimization, when max number of episodes in worker_0 is reached!!
 During training, only weights from worker_0 is saved,
 which is OK since all parameters are loaded from master network
+Global episodes only updated using worker_0
+this is important, since when we want to write summaries, there's no reason to use all workers!!
+and thus we keep track of episodes in worker_0
  
 """
 max_episode_length = 300
@@ -466,7 +478,7 @@ s_size = 7056  # Observations are greyscale frames of 84 * 84 * 1
 a_size = 3  # Agent can move Left, Right, or Fire
 load_model = False
 model_path = './9-summaryFolder/model'
-# Max number of episodes across all workers
+# Max number of episodes for worker_0
 # if global_step equals this, we raise exception to stop ALL threads
 MAX_STEPS = 1000
 
@@ -479,7 +491,7 @@ if not os.path.exists(model_path + '/Target_model/'):
 # Create a directory to save episode playback gifs to
 if not os.path.exists('./9-summaryFolder/frames'):
     os.makedirs('./9-summaryFolder/frames')
-
+lock = threading.Lock()
 with tf.device("/cpu:0"):
     global_episodes = tf.Variable(0, dtype=tf.int32, name='global_episodes', trainable=False)
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
@@ -489,7 +501,7 @@ with tf.device("/cpu:0"):
     workers = []
     # Create worker classes
     for i in range(num_workers):
-        workers.append(Worker(DoomGame(), i, s_size, a_size, optimizer, model_path, global_episodes))
+        workers.append(Worker(DoomGame(), i, s_size, a_size, optimizer, model_path, global_episodes, lock))
     saver = tf.train.Saver(max_to_keep=5)
 with tf.Session() as sess:
     coord = tf.train.Coordinator()   # read on it!
@@ -506,7 +518,7 @@ with tf.Session() as sess:
     worker_threads = []
     for worker in workers:
         worker_work = lambda: worker.work(max_episode_length, gamma, lmbda, sess, coord, saver)
-        t = threading.Thread(target=(worker_work))
+        t = threading.Thread(target=worker_work)
         t.start()
         time.sleep(0.5)
         worker_threads.append(t)
@@ -515,4 +527,3 @@ with tf.Session() as sess:
     target_network_W = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
     saver = tf.train.Saver(target_network_W)
     saver.save(sess, model_path + '/Target_model/' + 'target_network.ckpt')
-
