@@ -212,7 +212,9 @@ class Worker(object):
         self.episode_rewards = []
         self.episode_lengths = [] 
         self.episode_mean_values = []
-        self.summary_writer = tf.summary.FileWriter(SUMMARY_PATH + str(self.name))
+        if not os.path.exists(SUMMARY_PATH + str(self.name) + '/'):
+            os.makedirs(SUMMARY_PATH + str(self.name) + '/')
+        self.summary_writer = tf.summary.FileWriter(SUMMARY_PATH + str(self.name) + '/')
         self.lock = lock
 
         # Create the local copy of the network
@@ -433,7 +435,7 @@ class Worker(object):
                             make_gif(images, './9-summaryFolder/frames/image' + str(episode_count) + '.gif',
                                      duration=len(images) * time_per_step, true_image=True, salience=False)
 
-                        if episode_count % 250 == 0 and self.name == 'worker_0':
+                        if episode_count % N_SAVE_MODEL == 0 and self.name == 'worker_0':
                             saver.save(sess, self.model_path + '/model-' + str(episode_count) + '.cptk')
                             print("Saved Model")
 
@@ -463,12 +465,12 @@ class Worker(object):
 """
 We can finish the optimization at the end of MAX_Updates
 across all workers, or Updates for ONe worker as well!
-We finish optimization, when max number of episodes in worker_0 is reached!!
 During training, only weights from worker_0 is saved,
 which is OK since all parameters are loaded from master network
 Global episodes only updated using worker_0
 this is important, since when we want to write summaries, there's no reason to use all workers!!
 and thus we keep track of episodes in worker_0
+Summaries for all workers are written independently to their own folder/
  
 """
 max_episode_length = 300
@@ -481,6 +483,7 @@ model_path = './9-summaryFolder/model'
 # Max number of episodes for worker_0
 # if global_step equals this, we raise exception to stop ALL threads
 MAX_STEPS = 1000
+N_SAVE_MODEL = 250
 
 tf.reset_default_graph()
 
