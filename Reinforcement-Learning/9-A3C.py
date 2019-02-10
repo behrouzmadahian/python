@@ -147,8 +147,8 @@ class AC_Network(object):
                 # feel free to tune!
 
                 self.value_loss = 0.5 * tf.reduce_sum(tf.square(self.target_v - tf.reshape(self.value, [-1])))
-
-                self.entropy = - tf.reduce_sum(self.policy * tf.log(self.policy)) # used as regularizer!
+                # Minus entropy: minimized at P=0.5. helps avoiding premature convergence to deterministic policies!
+                self.entropy = tf.reduce_sum(self.policy * tf.log(self.policy)) # used as regularizer!
 
                 self.policy_loss = - tf.reduce_sum(tf.log(self.responsible_outputs) * self.advantages)
 
@@ -158,12 +158,10 @@ class AC_Network(object):
 
                 local_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
                 self.gradients = tf.gradients(self.loss, local_vars)
-
                 self.var_norms = tf.global_norm(local_vars)
 
                 # the clipped gradients are set to:
                 # grad * clip_norm / MAX(global_norm, clip_norm)
-
                 grads, self.grad_norms = tf.clip_by_global_norm(self.gradients, clip_norm = 40.0)
 
                 # Apply local gradients to global network
