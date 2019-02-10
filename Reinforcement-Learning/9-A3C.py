@@ -148,7 +148,7 @@ class AC_Network(object):
 
                 self.value_loss = 0.5 * tf.reduce_sum(tf.square(self.target_v - tf.reshape(self.value, [-1])))
 
-                self.entropy = tf.reduce_sum(self.policy * tf.log(self.policy)) # used as regularizer!
+                self.entropy = - tf.reduce_sum(self.policy * tf.log(self.policy)) # used as regularizer!
 
                 self.policy_loss = - tf.reduce_sum(tf.log(self.responsible_outputs) * self.advantages)
 
