@@ -1,3 +1,4 @@
+
 import threading
 import time
 import os
@@ -13,9 +14,7 @@ Asynchronous Advantage Actor Critic Method (A3C):
      
 While training is taking place, statistics on agent performance are available from Tensorboard:
 tensorboard --logdir=worker_0:'./train_0',worker_1:'./train_1',worker_2:'./train_2',worker_3:'./train_3'
-
 Threading vs Multiprocessing:
-
 The threading module uses threads, the multiprocessing module uses processes. The difference is that threads
 run in the same memory space, while processes have separate memory. This makes it a bit harder to share 
 objects between processes with multiprocessing. 
@@ -117,25 +116,26 @@ class ACNetwork(object):
             rnn_in = tf.expand_dims(hidden, [0])
             print('shape of rnn_in=', rnn_in.get_shape())
             # Recurrent layer for temporal dependencies
-            lstm_cell = tf.contrib.rnn.BasicLSTMCell(256)
+            lstm_cell = tf.nn.rnn_cell.LSTMCell(256, state_is_tuple=True)
             c_init = np.zeros((1, lstm_cell.state_size.c), np.float32)
             h_init = np.zeros((1, lstm_cell.state_size.h), np.float32)
             print('Size of LSTM hidden state=', lstm_cell.state_size.h)
-            self.state_init = [c_init, h_init]
+            self.state_init = (c_init, h_init)
 
             c_in = tf.placeholder(tf.float32, shape=[1, lstm_cell.state_size.c])
             h_in = tf.placeholder(tf.float32, shape=[1, lstm_cell.state_size.h])
             self.state_in = (c_in, h_in)
+            state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
             # we have one sequence so the sequence length to dynamic rnn has to be list of one element [step_size]
             self.step_size = tf.shape(self.image_in)[:1]
-            print('STEP size=', self.step_size.get_shape())
 
             # sequence_length:
             # Used to copy-through state and zero-out outputs when past a batch element's sequence length.
             # So it's more for correctness than performance.
             # dynamic_rnn output: [batch_size, max_time, cell.output_size] if time_major=False
-            lstm_outputs, lstm_state = tf.nn.dynamic_rnn(lstm_cell, rnn_in, initial_state=self.state_in,
+            lstm_outputs, lstm_state = tf.nn.dynamic_rnn(lstm_cell, rnn_in, initial_state=state_in,
                                                          sequence_length=self.step_size, time_major=False)
+            print('DONE!!!')
             print('Shape of LSTM output=', lstm_outputs.get_shape())
             lstm_c, lstm_h = lstm_state
             print(lstm_c.get_shape(), lstm_h.get_shape())
@@ -211,7 +211,7 @@ class Worker(object):
         self.global_episodes = global_episodes
         self.increment = self.global_episodes.assign_add(1)  # run at the end of each episode for worker_0
         self.episode_rewards = []
-        self.episode_lengths = [] 
+        self.episode_lengths = []
         self.episode_mean_values = []
         if not os.path.exists(SUMMARY_PATH + str(self.name) + '/'):
             os.makedirs(SUMMARY_PATH + str(self.name) + '/')
@@ -265,7 +265,6 @@ class Worker(object):
             and continue to gather experiences till end of episode is reached.
             then we call the train again, empty episode buffer and zero
             out self.batch_rnn_state at the start of new episode.
-
         :param rollout: [observations, as, rs, next_observations, done, values]
                         observations: list of flattened images
                         as: list of actions
