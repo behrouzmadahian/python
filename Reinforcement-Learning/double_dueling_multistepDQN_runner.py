@@ -62,7 +62,7 @@ with tf.Session() as sess:
     for worker in workers:
         worker_work = lambda: worker.work(dqn_config.max_episode_length, dqn_config.gamma, sess, coord,
                                           saver, master_target_network, dqn_config.GLOBAL_TARGET_UPDATE_FREQ,
-                                          dqn_config.N_SAVE_MODEL, dqn_config.MAX_STEPS)
+                                          dqn_config.N_SAVE_MODEL, dqn_config.max_episodes)
         t = threading.Thread(target=worker_work)
         t.start()
         worker_threads.append(t)
@@ -71,5 +71,3 @@ with tf.Session() as sess:
     target_network_W = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
     saver = tf.train.Saver(target_network_W)
     saver.save(sess, dqn_config.model_path + '/Target_model/' + 'target_network.ckpt')
-
-    
