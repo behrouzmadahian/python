@@ -71,3 +71,5 @@ with tf.Session() as sess:
     target_network_W = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
     saver = tf.train.Saver(target_network_W)
     saver.save(sess, dqn_config.model_path + '/Target_model/' + 'target_network.ckpt')
+
+    
