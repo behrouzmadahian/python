@@ -50,7 +50,6 @@ in getting experiences step size is one, since we only have one experience.
 when we perform the train function of worker, the step size becomes the # of elements in the buffer(here 30)!
 So sequence length is correctly defined
 """
-
 activation = tf.nn.elu
 SUMMARY_PATH = "./9-summaryFolder/train_"
 
@@ -65,9 +64,9 @@ def update_target_graph(from_scope, to_scope):
     return op_holder
 
 
-# process Doom screen image to produce cropped and re-sized image
 def process_frame(frame):
     """
+    process Doom screen image to produce cropped and re-sized image
     :param frame: a frame image of the game
     :return: flattened image as an array
     """
@@ -87,10 +86,9 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-# function to initialize weights for policy and value output layers
-# I would just use Xavier initializer..
 def initializer(activation):
     """
+    function to initialize weights for policy and value output layers
     :param activation: activation function
     :return: initializers for kernel and bias
     """
@@ -103,10 +101,9 @@ def initializer(activation):
     return kernel_init, bias_init
 
 
-# epsilon greedy exploration exploitation strategy
-# can also adopt exploration functions
 class ActionGetter(object):
     """
+     epsilon greedy exploration exploitation strategy
     According to the papaer: Asynchronous methods for RL, I implement 3 epsilons annealing at different rates
     and at each iteration sample from them.
     determines an action according to an epsilon greedy strategy with annealing epsilon
@@ -155,11 +152,10 @@ class ActionGetter(object):
             return session.run(main_dqn.best_action, feed_dict={main_dqn.inputs: [state],
                                                                 main_dqn.state_in: rnn_state})[0]
 
-
-# DQN network:
 class DQN(object):
     def __init__(self, s_size, a_size, scope, optimizer, rnn_cells=256):
         """
+        DQN network:
         builds mode graph and instructions for calculating loss and back propagation
         :param s_size: length of flattened frame
         :param a_size: size od action space
@@ -212,7 +208,7 @@ class DQN(object):
             # dynamic_rnn output: [batch_size, max_time, cell.output_size] if time_major=False
             lstm_outputs, lstm_state = tf.nn.dynamic_rnn(lstm_cell, rnn_in, initial_state=state_in,
                                                          sequence_length=self.step_size, time_major=False)
-            #print('Shape of LSTM output=', lstm_outputs.get_shape())
+            # print('Shape of LSTM output=', lstm_outputs.get_shape())
             lstm_c, lstm_h = lstm_state
             print(lstm_c.get_shape(), lstm_h.get_shape())
             print(lstm_c[:1, :].get_shape())
@@ -375,11 +371,9 @@ class Worker(object):
              average value loss, average policy loss, average entropy loss,
              gradients' global norm, variables' global norm
         """
-        # self.q_discounts = np.array([gamma**j for j in range(self.steps)])
         len_rollout = len(rollout) - 1
         rollout = np.array(rollout)
         states = np.vstack(rollout[:, 0])
-        # last_state = rollout[-1, 0]
         actions = rollout[:-1, 1]
         rewards = rollout[:, 2]
         # print('Length of rewards- Must be one smaller than rollout size!!', len(discounted_rewards))
@@ -405,7 +399,8 @@ class Worker(object):
                                                                         feed_dict=feed_dict)
         return q_loss / len_rollout, g_n / len_rollout, v_n / len_rollout, step_size
 
-    def work(self, max_episode_length, gamma, sess, coord, saver, master_targetDQN, global_target_update_freq):
+    def work(self, max_episode_length, gamma, sess, coord, saver, master_targetDQN,
+             global_target_update_freq, N_SAVE_MODEL, MAX_STEPS):
         """
         The work process continues forever.-> we can implement iterations, ..
         :param max_episode_length: maximum episode length
@@ -533,6 +528,5 @@ class Worker(object):
                             sess.run(self.increment)
                     episode_count += 1
                     total_episodes = sess.run(self.global_episodes)
+
                     assert (total_episodes <= MAX_STEPS), "MAX episodes for training reached- optimization finished"
-
-
