@@ -9,8 +9,13 @@ from helper import *
 from vizdoom import *
 
 """
-asynchronous k-step Double Dueling DQN:
-Implementation of DeepMind's Deep Q-Learning
+Implementation of DeepMind's asynchronous k-step Double Dueling DQN:
+We need to have two networks:
+Global Shared network:
+Used to apply the updates
+Global shared target network:
+Used to calculated target values and updated slowly!
+
 Double DQN
 Dueling DQN : Q(s, a) = V(s) + (A(s, a) - Mean_a(A(s, a)))
 # MINUS mean advantage from state s over all actions:
@@ -20,8 +25,19 @@ Huber loss for gradient explosion avoidance
 In dueling architecture, the agent can learn which states are valuable or not, without having to learn
 the effect of each action to each state  This is particularly useful in states where its actions
 do not affect the environment in any relevant way.
-target_Qt = rt + lambda * Q(s_t+1) ; Q(s_t+1) obtained from double DQN strategy
-if terminal state is reached then target_Qt = rt
+multi step updates are made as follows. assume we do k-step 
+1-step update will be:
+
+target_Qt = rt+k-1 + lambda * Q(s_t+k, a_t+k) ; Q(s_t+k, a_t+k) obtained from double DQN strategy
+and predicted :Q(s_t+k-1, a_t+k-1)
+2- step update will become:
+target_Qt = r_t+k-2 + lambda*rt+k-1 + lambda^2 * Q(s_t+k, a_t+k)
+predicted Q(s_t+k-2, a_t+k-2)
+..
+k-step update will become:
+target_Qt = r_t + lambda * r_t+1 + lambda^2 * r_t+k-2 + .. + lambda^(t+k-1) * rt+k-1 + lambda^(t+k) * Q(s_t+k, a_t+k)
+
+if terminal state is reached then Q(s_t+k, a_t+k) = 0
     
 While training is taking place, statistics on agent performance are available from Tensorboard:
 tensorboard --logdir=worker_0:'./train_0',worker_1:'./train_1',worker_2:'./train_2',worker_3:'./train_3'
@@ -39,6 +55,7 @@ So sequence length is correctly defined
 """
 
 activation = tf.nn.elu
+SUMMARY_PATH = "./9-summaryFolder/train_"
 
 
 # helper functions:
@@ -51,7 +68,7 @@ def update_target_graph(from_scope, to_scope):
     return op_holder
 
 
-# process Doom screen image to produce cropped and resized image
+# process Doom screen image to produce cropped and re-sized image
 def process_frame(frame):
     """
     :param frame: a frame image of the game
@@ -96,9 +113,8 @@ class ActionGetter(object):
     determines an action according to an epsilon greedy strategy with annealing epsilon
     Modify the annealing and exploration as desired..
     """
-    def __init__(self, n_actions, eps_initial=1, eps_final=0.1, eps_final_frame=0.01, eps_evaluation=0.0,
-                 eps_annealing_frame=1000000, exploration_steps=50000,
-                 max_frames=2000000):
+    def __init__(self, n_actions, eps_initial=0.5, eps_final=0.1, eps_final_frame=0.01, eps_evaluation=0.0,
+                 eps_annealing_frame=20000, exploration_steps=1000, max_frames=50000):
         """
         :param n_actions: int, number of possible actions
         :param eps_initial: float, initial exploration probability for replay_memory start size frames
@@ -132,7 +148,7 @@ class ActionGetter(object):
                                                                    self.exploration_steps)
         self.intercept_2 = self.eps_final
 
-    def get_action(self, session, frame_number, state, main_dqn, evaluation=False):
+    def get_action(self, session, frame_number, state, main_dqn, rnn_state, evaluation=False):
         """
         :param session: tensorlfow session object
         :param frame_number: int, number of current frame
@@ -152,9 +168,12 @@ class ActionGetter(object):
             eps = self.slope_2 * (frame_number - self.exploration_steps - self.eps_annealing_frames) \
                   + self.intercept_2
         if np.random.rand(1) < eps:
+            #print('Taking random action')
             return np.random.randint(0, self.n_actions)
         else:
-            return session.run(main_dqn.best_action, feed_dict={main_dqn.input: [state]})[0]
+            # print('Taking action according to netwok...')
+            return session.run(main_dqn.best_action, feed_dict={main_dqn.inputs: [state],
+                                                                main_dqn.state_in: rnn_state})[0]
 
 
 # DQN network:
@@ -172,7 +191,7 @@ class DQN(object):
             # Input and visual encoding layers:
             self.inputs = tf.placeholder(shape=[None, s_size], dtype=tf.float32)
             self.image_in = tf.reshape(self.inputs, shape=[-1, 84, 84, 1])
-            print('Shape of Image=', self.image_in.get_shape())
+            # print('Shape of Image=', self.image_in.get_shape())
 
             self.conv1 = tf.layers.conv2d(inputs=self.image_in, filters=16, kernel_size=[8, 8],
                                           strides=4, padding='VALID', activation=activation,
@@ -192,12 +211,12 @@ class DQN(object):
             # Output of dense layer: [N, 256]
             # transpose to input to rnn: (1, N, 256); < each batch consists of consecutive frames..>
             rnn_in = tf.expand_dims(hidden, [0])
-            print('shape of rnn_in=', rnn_in.get_shape())
+            # print('shape of rnn_in=', rnn_in.get_shape())
             # Recurrent layer for temporal dependencies
             lstm_cell = tf.contrib.rnn.BasicLSTMCell(rnn_cells)
             c_init = np.zeros((1, lstm_cell.state_size.c), np.float32)
             h_init = np.zeros((1, lstm_cell.state_size.h), np.float32)
-            print('Size of LSTM hidden state=', lstm_cell.state_size.h)
+            # print('Size of LSTM hidden state=', lstm_cell.state_size.h)
             self.state_init = [c_init, h_init]
 
             c_in = tf.placeholder(tf.float32, shape=[1, lstm_cell.state_size.c])
@@ -205,27 +224,25 @@ class DQN(object):
             self.state_in = (c_in, h_in)
             # we have one sequence so the sequence length to dynamic rnn has to be list of one element [step_size]
             self.step_size = tf.shape(self.image_in)[:1]
-            print('STEP size=', self.step_size.get_shape())
-
+            # print('STEP size=', self.step_size.get_shape())
+            state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
             # sequence_length:
             # Used to copy-through state and zero-out outputs when past a batch element's sequence length.
             # So it's more for correctness than performance.
             # dynamic_rnn output: [batch_size, max_time, cell.output_size] if time_major=False
-            lstm_outputs, lstm_state = tf.nn.dynamic_rnn(lstm_cell, rnn_in, initial_state=self.state_in,
+            lstm_outputs, lstm_state = tf.nn.dynamic_rnn(lstm_cell, rnn_in, initial_state=state_in,
                                                          sequence_length=self.step_size, time_major=False)
-            print('Shape of LSTM output=', lstm_outputs.get_shape())
+            #print('Shape of LSTM output=', lstm_outputs.get_shape())
             lstm_c, lstm_h = lstm_state
             print(lstm_c.get_shape(), lstm_h.get_shape())
             print(lstm_c[:1, :].get_shape())
             self.state_out = (lstm_c[:1, :], lstm_h[:1, :])  # seems redundant indexing on axis =0
 
-            rnn_out = tf.reshape(lstm_outputs, [-1, 256])
-            print('Shape of flattened output of RNN=', rnn_out.get_shape())
+            rnn_out = tf.reshape(lstm_outputs, [-1, rnn_cells])
+            # print('Shape of flattened output of RNN=', rnn_out.get_shape())
 
             # splitting into value and advantage stream:
             self.value_stream, self.advantage_stream = tf.split(rnn_out, num_or_size_splits=2, axis=1)
-            self.value_stream = tf.layers.flatten(self.value_stream)  # keeps batch dimension
-            self.advantage_stream = tf.layers.flatten(self.advantage_stream)
 
             self.advantage = tf.layers.dense(inputs=self.advantage_stream, units=a_size,
                                              kernel_initializer=tf.variance_scaling_initializer(scale=2),
@@ -239,7 +256,7 @@ class DQN(object):
             self.best_action = tf.argmax(self.q_values, axis=1)
 
             # only the worker network needs ops for loss functions and gradient updating
-            if scope != 'global':
+            if scope != 'global' and scope != 'global_target':
                 # Parameter updates:
                 # target_Q according to Bellman equation calculated in function learn()
                 # we do variable k-step returns in which max_a(Q_target(s_(t+k), a_(t+k)) is the same and we calculate
@@ -250,13 +267,10 @@ class DQN(object):
                 self.actions_oh = tf.one_hot(self.actions, depth=a_size, dtype=tf.float32)
                 # Q value of the action that was performed:
                 self.Q = tf.reduce_sum(tf.multiply(self.q_values, self.actions_oh), axis=1)
-               ############################
-                # This needs to be fixed! in addition to several other parts..
-                # we only need Q(st, at)
-                self.q_st = tf.slice(self.Q, [0], [self.step_size - 1])
-                print('Shape of repeated Q value at current state: ', self.q_st.get_shape())
+                # print('Shape of output Q values: ', self.Q.get_shape())
 
-                self.loss = tf.reduce_mean(tf.losses.huber_loss(labels=self.target_q, predictions=self.q_st))
+                # self.loss = tf.reduce_mean(tf.losses.huber_loss(labels=self.target_q, predictions=self.Q))
+                self.loss = tf.reduce_mean(tf.losses.mean_squared_error(labels=self.target_q, predictions=self.Q))
                 # Get gradients from local network using local losses
                 local_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
                 self.gradients = tf.gradients(self.loss, local_vars)
@@ -268,9 +282,6 @@ class DQN(object):
                 # Apply local gradients to global network
                 global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
                 self.apply_grads = optimizer.apply_gradients(zip(grads, global_vars))
-
-
-SUMMARY_PATH = "./9-summaryFolder/train_"
 
 
 # Worker Agent
@@ -286,7 +297,7 @@ class Worker(object):
         :param model_path: path to save the model
         :param global_episodes: counter for global number of episodes!
         :param lock: threading.lock, prevents threads to simultaneously write on each other
-                       while one worker is performing gradient update, other workers wait for it to finish!
+                     while one worker is performing gradient update, other workers wait for it to finish!
         """
         self.steps = steps
         self.a_size = a_size
@@ -296,8 +307,8 @@ class Worker(object):
         self.global_episodes = global_episodes
         self.increment = self.global_episodes.assign_add(1)  # run at the end of each episode for worker_0
         self.episode_rewards = []
+        self.episode_losses = []
         self.episode_lengths = []
-        self.episode_mean_values = []
         if not os.path.exists(SUMMARY_PATH + str(self.name) + '/'):
             os.makedirs(SUMMARY_PATH + str(self.name) + '/')
         self.summary_writer = tf.summary.FileWriter(SUMMARY_PATH + str(self.name) + '/')
@@ -340,22 +351,26 @@ class Worker(object):
         # End Doom set-up
         self.env = game
 
-    def doubleq(self, session, new_states, main_dqn, target_dqn):
+    def doubleq(self, session, states, target_dqn):
         """
+        we want the last predicted target Q!
+        Use the whole state trajectory to build rnn state
         :param new_states:
         :param main_dqn:
         :param target_dqn:
         :return: target double dqn
         """
+        target_rnn_state = target_dqn.state_init
         # the main network estimates which action is the best for the next state for every transition in minibatch
-        arg_q_max = session.run(main_dqn.best_action, feed_dict={main_dqn.input: new_states})
-
+        arg_q_max = session.run(self.local_agent.best_action, feed_dict={self.local_agent.inputs: states,
+                                                                         self.local_agent.state_in: target_rnn_state})
         # the target network estimates the q values in the next state
-        qvals = session.run(target_dqn.q_values, feed_dict={target_dqn.input: new_states})
-        double_q = qvals[range(self.steps - 1), arg_q_max]
+        double_q = session.run(target_dqn.q_values, feed_dict={target_dqn.inputs: states,
+                                                               target_dqn.state_in: target_rnn_state})
+        double_q = double_q[range(len(states)), arg_q_max][-1]
         return double_q
 
-    def train(self, rollout, sess, gamma, main_dqn, target_dqn):
+    def train(self, rollout, sess, gamma, master_target_dqn, terminal):
         """
         One step of update and loss calculation
         reset of RNN state:
@@ -381,21 +396,25 @@ class Worker(object):
              average value loss, average policy loss, average entropy loss,
              gradients' global norm, variables' global norm
         """
-        self.q_discounts = np.array([gamma**j for j in range(self.steps)])
-        l_rollout = len(rollout) - 1
+        # self.q_discounts = np.array([gamma**j for j in range(self.steps)])
+        len_rollout = len(rollout) - 1
         rollout = np.array(rollout)
-        states = rollout[:-1, 0]
-        new_states = rollout[1:, 0]
+        states = np.vstack(rollout[:, 0])
+        # last_state = rollout[-1, 0]
         actions = rollout[:-1, 1]
-        rewards = rollout[:-1, 2]
-        # Here, we take the rewards and qvalues from the rollout, and use them to
-        discounted_rewards = discount(rewards, gamma)
-        target_q = self.doubleq(sess, new_states, main_dqn, target_dqn) * self.q_discounts + discounted_rewards
+        rewards = rollout[:, 2]
+        # print('Length of rewards- Must be one smaller than rollout size!!', len(discounted_rewards))
+        double_q = (1. - terminal) * self.doubleq(sess, states, master_target_dqn)
+        rewards[-1] = double_q
+        # in the discount stream the last element will be Q(s_t+k, a_t+k) that we dont need!
+        target_q = discount(rewards, gamma)[:-1]
+        # print('Length of targetQ !!', len(discounted_rewards))
 
         # self.batch_rnn_state will get initialized before train is called in work()
-        feed_dict = {main_dqn.input: states,
-                     main_dqn.target_q: target_q,
-                     main_dqn.action: actions}
+        feed_dict = {self.local_agent.inputs: states[:-1],
+                     self.local_agent.target_q: target_q,
+                     self.local_agent.actions: actions,
+                     self.local_agent.state_in: (self.batch_rnn_state[0], self.batch_rnn_state[1])}
         # Update the global network using gradients from loss
         # Generate network statistics to periodically save
         q_loss, g_n, v_n, self.batch_rnn_state, step_size, _ = sess.run([self.local_agent.loss,
@@ -405,10 +424,9 @@ class Worker(object):
                                                                          self.local_agent.step_size,
                                                                          self.local_agent.apply_grads],
                                                                         feed_dict=feed_dict)
+        return q_loss / len_rollout, g_n / len_rollout, v_n / len_rollout, step_size
 
-        return q_loss / l_rollout, g_n, v_n, step_size
-
-    def work(self, max_episode_length, gamma, lmbda, sess, coord, saver):
+    def work(self, max_episode_length, gamma, sess, coord, saver, master_targetDQN, global_target_update_freq):
         """
         The work process continues forever.-> we can implement iterations, ..
         :param max_episode_length: maximum episode length
@@ -431,10 +449,13 @@ class Worker(object):
                     # update parameters of local network with that of master network
                     # initialize the parameters of local network from that of master network
                     sess.run(self.update_local_ops)
+                    if episode_count % global_target_update_freq == 0:
+                        update_target_graph('global', 'global_target')
                     episode_buffer = []
-                    episode_values = []
                     episode_frames = []
                     episode_reward = 0
+                    episode_qloss = 0
+                    episode_update_cnt = 0
                     episode_step_count = 0
                     # done = False
                     self.env.new_episode()
@@ -445,14 +466,13 @@ class Worker(object):
                     rnn_state = self.local_agent.state_init
                     self.batch_rnn_state = rnn_state
                     while not self.env.is_episode_finished():
-                        action = action_getter.get_action(sess, frame_number, s, self.local_agent)
-                        # Take an action using probabilities from policy network output.
-                        action_Q = sess.run([self.local_agent.policy, self.local_agent.value,
-                                                         self.local_agent.state_out],
-                                                        feed_dict={self.local_agent.inputs: [s],
-                                                                   self.local_agent.state_in: rnn_state})
+                        action = action_getter.get_action(sess, frame_number, s, self.local_agent,
+                                                          self.batch_rnn_state, evaluation=False)
+                        # print(action)
+                        frame_number += 1
                         # action fed to environment  as one hot encoding
-                        r = self.env.make_action(self.actions[action]) / 100.0
+                        r = self.env.make_action(self.actions[action]) / 100.
+                        # print('ACTION REWARD: ', r)
                         done = self.env.is_episode_finished()
                         if not done:
                             s1 = self.env.get_state().screen_buffer
@@ -462,7 +482,6 @@ class Worker(object):
                             s1 = s
                         episode_buffer.append([s, action, r, s1, done])
                         # episode values and rewards, used for printing...
-                        episode_values.append(v[0, 0])
                         episode_reward += r
                         s = s1
                         # total_steps += 1
@@ -473,24 +492,26 @@ class Worker(object):
                             break
                         # If the episode hasn't ended, but the experience buffer is full, then we
                         # make an update step using that experience rollout.
-                        if len(episode_buffer) == 30 and not done:
+                        if len(episode_buffer) == self.steps and not done:
                             # Since we don't know what the true final return is, we "bootstrap" from our current
                             # value estimation.
-                            v1, step_size = sess.run([self.local_agent.value, self.local_agent.step_size],
-                                                     feed_dict={self.local_agent.inputs: [s],
-                                                                self.local_agent.state_in: rnn_state})
-                            v1 = v1[0, 0]
-                            print('STEP size in one experience =', step_size)
-                            try:
-                                state_rnn_batch1 = sess.run(self.batch_rnn_state)
-                            except:
-                                state_rnn_batch1 = self.batch_rnn_state
-                            print('Shape of Batch State=', state_rnn_batch1[1].shape, '=======================')
+                            # v1, step_size = sess.run([self.local_agent.value, self.local_agent.step_size],
+                            #                          feed_dict={self.local_agent.inputs: [s],
+                            #                                     self.local_agent.state_in: rnn_state})
+                            # print('STEP size in one experience =', step_size)
+                            # try:
+                            #     state_rnn_batch1 = sess.run(self.batch_rnn_state)
+                            # except:
+                            #     state_rnn_batch1 = self.batch_rnn_state
+                            # print('Shape of Batch State=', state_rnn_batch1[1].shape, '=======================')
 
                             # Training
                             with self.lock:
-                                v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, v1)
-                            print('STEP size in training =', step_size)
+                                q_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma,
+                                                                      master_targetDQN, done)
+                                episode_qloss += q_l
+                                episode_update_cnt += 1
+                            # print('STEP size in training =', step_size)
                             # empty the episode buffer. the new experiences in current episode will be added
                             # and self.batch_rnn_state encapsulate the memory of previous experiences in the episode
                             episode_buffer = []
@@ -499,17 +520,21 @@ class Worker(object):
                         if done:
                             break
                     # Update the network using the episode buffer at the end of the episode.
-                    if len(episode_buffer) != 0:
+                    if len(episode_buffer) > 1:
+                        # print('Length of Episode buffer at the end of episode:', len(episode_buffer))
                         with self.lock:
-                            v_l, p_l, e_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma, lmbda, 0.0)
-                        sess.run(self.update_local_ops)
+                            q_l, g_n, v_n, step_size = self.train(episode_buffer, sess, gamma,
+                                                                  master_targetDQN, done)
+                            sess.run(self.update_local_ops)
+                            episode_qloss += q_l
+                            episode_update_cnt += 1
                         # total_steps += 1
+                    self.episode_losses.append(episode_qloss / episode_update_cnt)
                     self.episode_rewards.append(episode_reward)
                     self.episode_lengths.append(episode_step_count)
-                    self.episode_mean_values.append(np.mean(episode_values))
 
                     # Periodically save gifs of episodes, model parameters, and summary statistics.
-                    if episode_count % 5 == 0 and episode_count != 0:
+                    if episode_count % 10 == 0 and episode_count != 0:
                         if self.name == 'worker_0' and episode_count % 25 == 0:
                             time_per_step = 0.05
                             images = np.array(episode_frames)
@@ -520,16 +545,18 @@ class Worker(object):
                             saver.save(sess, self.model_path + '/model-' + str(episode_count) + '.cptk')
                             print("Saved Model")
 
-                        mean_reward = np.mean(self.episode_rewards[-5:])
-                        mean_length = np.mean(self.episode_lengths[-5:])
-                        mean_value = np.mean(self.episode_mean_values[-5:])
+                        mean_reward = np.mean(self.episode_rewards[-10:])
+                        mean_length = np.mean(self.episode_lengths[-10:])
+                        mean_loss = np.mean(self.episode_losses[:10:])
+                        if self.name == 'worker_0':
+                            print('EEPISODE: ', episode_count)
+                            print('Average of rewards of last 10 episodes: ', mean_reward)
+                            print('Average of Q loss of last 10 episodes: ', mean_loss)
+                            print('-'*100)
                         summary = tf.Summary()
                         summary.value.add(tag='Perf/Reward', simple_value=float(mean_reward))
+                        summary.value.add(tag='Perf/Qloss', simple_value=float(mean_loss))
                         summary.value.add(tag='Perf/Length', simple_value=float(mean_length))
-                        summary.value.add(tag='Perf/Value', simple_value=float(mean_value))
-                        summary.value.add(tag='Losses/Value Loss', simple_value=float(v_l))
-                        summary.value.add(tag='Losses/Policy Loss', simple_value=float(p_l))
-                        summary.value.add(tag='Losses/Entropy', simple_value=float(e_l))
                         summary.value.add(tag='Losses/Grad Norm', simple_value=float(g_n))
                         summary.value.add(tag='Losses/Var Norm', simple_value=float(v_n))
                         self.summary_writer.add_summary(summary, episode_count)
@@ -555,17 +582,18 @@ Summaries for all workers are written independently to their own folder/
  
 """
 max_episode_length = 300
-gamma = .99  # discount rate for advantage estimation and reward discounting
-lmbda = 0.6
+gamma = 0.99  # discount rate for advantage estimation and reward discounting
 s_size = 7056  # Observations are greyscale frames of 84 * 84 * 1
 a_size = 3  # Agent can move Left, Right, or Fire
 load_model = False
 model_path = './9-summaryFolder/model'
 # Max number of episodes for worker_0
 # if global_step equals this, we raise exception to stop ALL threads
-MAX_STEPS = 1000
+MAX_STEPS = 100000
 N_SAVE_MODEL = 250
-
+GLOBAL_TARGET_UPDATE_FREQ = 500
+# k-step DQN
+STEPS = 30
 tf.reset_default_graph()
 
 if not os.path.exists(model_path):
@@ -579,13 +607,15 @@ lock = threading.Lock()
 with tf.device("/cpu:0"):
     global_episodes = tf.Variable(0, dtype=tf.int32, name='global_episodes', trainable=False)
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
-    master_network = ACNetwork(s_size, a_size, 'global', None)  # Generate global network
+    master_network = DQN(s_size, a_size, 'global', None, 256)  # Generate global network
+    master_target_network = DQN(s_size, a_size, 'global_target', 256)
     # num_workers = multiprocessing.cpu_count()  # Set workers to number of available CPU threads
-    num_workers = 2  # Set workers to number of available CPU threads
+    num_workers = 4  # Set workers to number of available CPU threads
     workers = []
     # Create worker classes
     for i in range(num_workers):
-        workers.append(Worker(DoomGame(), i, s_size, a_size, optimizer, model_path, global_episodes, lock))
+        # Worker Agent
+        workers.append(Worker(DoomGame(), i, s_size, a_size, STEPS, optimizer, model_path, global_episodes, lock))
     saver = tf.train.Saver(max_to_keep=5)
 with tf.Session() as sess:
     coord = tf.train.Coordinator()   # read on it!
@@ -601,7 +631,8 @@ with tf.Session() as sess:
 
     worker_threads = []
     for worker in workers:
-        worker_work = lambda: worker.work(max_episode_length, gamma, lmbda, sess, coord, saver)
+        worker_work = lambda: worker.work(max_episode_length, gamma, sess, coord,
+                                          saver, master_target_network, GLOBAL_TARGET_UPDATE_FREQ)
         t = threading.Thread(target=worker_work)
         t.start()
         worker_threads.append(t)
