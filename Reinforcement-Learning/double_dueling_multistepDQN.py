@@ -50,8 +50,6 @@ in getting experiences step size is one, since we only have one experience.
 when we perform the train function of worker, the step size becomes the # of elements in the buffer(here 30)!
 So sequence length is correctly defined
 """
-activation = tf.nn.elu
-SUMMARY_PATH = "./9-summaryFolder/train_"
 
 
 # helper functions:
@@ -153,7 +151,7 @@ class ActionGetter(object):
                                                                 main_dqn.state_in: rnn_state})[0]
 
 class DQN(object):
-    def __init__(self, s_size, a_size, scope, optimizer, rnn_cells=256):
+    def __init__(self, s_size, a_size, scope, optimizer, activation, rnn_cells=256):
         """
         DQN network:
         builds mode graph and instructions for calculating loss and back propagation
@@ -262,7 +260,9 @@ class DQN(object):
 
 # Worker Agent
 class Worker(object):
-    def __init__(self, game, name, s_size, a_size, steps, optimizer, model_path, global_episodes, lock):
+    def __init__(self, game, name, s_size, a_size, steps,
+                 optimizer, model_path, global_episodes, lock, activation,
+                 summary_path):
         """
         :param game: environment for the game
         :param name: scope name
@@ -285,13 +285,13 @@ class Worker(object):
         self.episode_rewards = []
         self.episode_losses = []
         self.episode_lengths = []
-        if not os.path.exists(SUMMARY_PATH + str(self.name) + '/'):
-            os.makedirs(SUMMARY_PATH + str(self.name) + '/')
-        self.summary_writer = tf.summary.FileWriter(SUMMARY_PATH + str(self.name) + '/')
+        if not os.path.exists(summary_path + str(self.name) + '/'):
+            os.makedirs(summary_path + str(self.name) + '/')
+        self.summary_writer = tf.summary.FileWriter(summary_path + str(self.name) + '/')
         self.lock = lock
 
         # Create the local copy of the network
-        self.local_agent = DQN(s_size, self.a_size, self.name, optimizer)
+        self.local_agent = DQN(s_size, self.a_size, self.name, optimizer, activation, rnn_cells=256)
 
         # the tensorflow op to copy global parameters to local network
         # this ops is run at the initialization of worker and at the end of each experience update!
@@ -528,4 +528,5 @@ class Worker(object):
                             sess.run(self.increment)
                     episode_count += 1
                     total_episodes = sess.run(self.global_episodes)
+
                     assert (total_episodes <= max_episodes), "MAX episodes for training reached- optimization finished"
