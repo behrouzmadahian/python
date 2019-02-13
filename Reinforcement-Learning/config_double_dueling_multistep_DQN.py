@@ -18,4 +18,7 @@ class DQNConfig(object):
         # k-step DQN
         self.STEPS = 30
         self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
+        self.summary_path = "./9-summaryFolder/train_"
+        self.activation = tf.nn.relu
+
 
