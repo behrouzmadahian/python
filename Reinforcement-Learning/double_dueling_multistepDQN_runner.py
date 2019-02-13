@@ -33,9 +33,11 @@ if not os.path.exists('./9-summaryFolder/frames'):
 lock = threading.Lock()
 
 with tf.device("/cpu:0"):
+
     global_episodes = tf.Variable(0, dtype=tf.int32, name='global_episodes', trainable=False)
-    master_network = DQN(dqn_config.s_size, dqn_config.a_size, 'global', None, 256)  # Generate global network
-    master_target_network = DQN(dqn_config.s_size, dqn_config.a_size, 'global_target', 256)
+    # Generate global network
+    master_network = DQN(dqn_config.s_size, dqn_config.a_size, 'global', None, dqn_config.activation, 256)
+    master_target_network = DQN(dqn_config.s_size, dqn_config.a_size, 'global_target', None, dqn_config.activation, 256)
     # num_workers = multiprocessing.cpu_count()  # Set workers to number of available CPU threads
     num_workers = 4  # Set workers to number of available CPU threads
     workers = []
@@ -44,7 +46,8 @@ with tf.device("/cpu:0"):
         # Worker Agent
         workers.append(Worker(DoomGame(), i, dqn_config.s_size,
                               dqn_config.a_size, dqn_config.STEPS, dqn_config.optimizer,
-                              dqn_config.model_path, global_episodes, lock))
+                              dqn_config.model_path, global_episodes, lock, dqn_config.activation,
+                              dqn_config.summary_path))
     saver = tf.train.Saver(max_to_keep=5)
 with tf.Session() as sess:
     coord = tf.train.Coordinator()   # read on it!
