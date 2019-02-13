@@ -400,7 +400,7 @@ class Worker(object):
         return q_loss / len_rollout, g_n / len_rollout, v_n / len_rollout, step_size
 
     def work(self, max_episode_length, gamma, sess, coord, saver, master_targetDQN,
-             global_target_update_freq, N_SAVE_MODEL, MAX_STEPS):
+             global_target_update_freq, N_SAVE_MODEL, max_episodes):
         """
         The work process continues forever.-> we can implement iterations, ..
         :param max_episode_length: maximum episode length
@@ -528,4 +528,5 @@ class Worker(object):
                             sess.run(self.increment)
                     episode_count += 1
                     total_episodes = sess.run(self.global_episodes)
-                    assert (total_episodes <= MAX_STEPS), "MAX episodes for training reached- optimization finished"
+
+                    assert (total_episodes <= max_episodes), "MAX episodes for training reached- optimization finished"
