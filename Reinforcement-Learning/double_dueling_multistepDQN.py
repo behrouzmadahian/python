@@ -528,5 +528,4 @@ class Worker(object):
                             sess.run(self.increment)
                     episode_count += 1
                     total_episodes = sess.run(self.global_episodes)
-
                     assert (total_episodes <= MAX_STEPS), "MAX episodes for training reached- optimization finished"
