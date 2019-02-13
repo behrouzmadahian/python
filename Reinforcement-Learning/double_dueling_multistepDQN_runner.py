@@ -71,7 +71,8 @@ with tf.Session() as sess:
     worker_threads = []
     for worker in workers:
         worker_work = lambda: worker.work(max_episode_length, gamma, sess, coord,
-                                          saver, master_target_network, GLOBAL_TARGET_UPDATE_FREQ)
+                                          saver, master_target_network,
+                                          GLOBAL_TARGET_UPDATE_FREQ, N_SAVE_MODEL, MAX_STEPS)
         t = threading.Thread(target=worker_work)
         t.start()
         worker_threads.append(t)
