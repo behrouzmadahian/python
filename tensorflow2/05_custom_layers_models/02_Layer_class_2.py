@@ -11,13 +11,13 @@ from tensorflow import keras
 # Previous version: We know the shape argument of input to the layer:
 # We also have a quicker shortcut for adding weight to a layer using add_weight
 class Linear(keras.layers.Layer):
-  def __init__(self, units=32, input_dim=32):
+  def __init__(self, units=32):
     super(Linear, self).__init__()
     self.units = units
   
   def build(self, input_shape):
-    self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal', trainable=True)
-    self.b = self.add_weight(shape=(units,), initializer='zeros', trainable=True)
+    self.w = self.add_weight(shape=(input_shape[-1], self.units), initializer='random_normal', trainable=True)
+    self.b = self.add_weight(shape=(self.units,), initializer='zeros', trainable=True)
    
   def call(self, inputs):
    return tf.matmul(inputs, self.w) + self.b
