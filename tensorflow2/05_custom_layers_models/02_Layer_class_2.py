@@ -21,3 +21,9 @@ class Linear(keras.layers.Layer):
    
   def call(self, inputs):
    return tf.matmul(inputs, self.w) + self.b
+
+# At instantiation, we don't know on what inputs this is going to get called.
+# The layer's weights are created dynamically the first time the layer is called.
+linear_layer = Linear(32)
+x = tf.ones((2, 2))
+y = linear_layer(x)
