@@ -9,5 +9,13 @@ import tensorflow as tf
 from tensorflow import keras
 
 class CustomDropout(layers.Layer):
+  def __init__(self, rate, **kwargs):
+    super(CustomDropout, self).__init__(**kwargs)
+    self.rate = rate
   
-super(CustomDropout, self).__init__()
+  def call(self, inputs, training=None):
+    iif training:
+      return tf.nn.dropout(inputs, rate=self.rate)
+    return inputs
+  
+    
