@@ -24,6 +24,7 @@ class Linear(keras.layers.Layer):
 
 class MLPBlock(layers.Layer):
   def __init__(self):
+    super(MLPBlock, self).__init__()
     self.linear1 = Linear(32)
     self.linear2 = Linear(32)
     self.linear3 = Linear(1)
