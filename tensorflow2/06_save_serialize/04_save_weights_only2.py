@@ -32,19 +32,44 @@ optimizer = keras.optimizers.RMSprop()
 model.compile(loss=loss_fn, optimizer=optimizer)
 history = model.fit(x_train, y_train, batch_size=64, epochs=1)
 predictions = model.predict(x_test)
-# Getting model  weights :
-weights = model.get_weights()
-model.set_weights(weights)
 
-# ANother Scenario:
-config = model.get_config()
-weights = model.get_weights()
-new_model = keras.Model.from_config(config)
-new_model.set_weigths(weights)
+# Save JSON config to disk:
+checkpoint_folder = 'PATH to Checkpoint Folder'
+config_name = 'model_config.json'
+# check to see if you can load the model wiehgts from .ckpt
+checkpoint_file = 'model.h5'
+json_config = model.to_json()
+with open(checkpoint_folder+config_name, 'w') as json_file:
+  json_file.write(json_config)
 
-# Check that the state is Preserved < weights preserved but optimizer state is NOT!!)
+# Save weights to disk
+model.save_weights(checkpoint_folder+checkpoint_file)
+
+# Re-load the model from 2 files we saved:
+with open(checkpoint_folder+config_name) as json_file:
+  json_config = json_file.read()
+new_model = keras.models.model_from_json(json_config)
+new_model.load_weights(checkpoint_folder+checkpoint_file)
 new_predictions = new_model.predict(x_test)
 all_close = np.testing.assert_allclose(predictions, new_predictions, rtol=1e-6, atol=1e-6)
 print('New Predictions from loaded model from .h5 are identical to predictions before model.save: ({})'.format(all_close))
 
+##############
+# check to see if you can load the model wiehgts from .ckpt
+checkpoint_file = 'model.ckpt'
+json_config = model.to_json()
+with open(checkpoint_folder+config_name, 'w') as json_file:
+  json_file.write(json_config)
 
+# Save weights to disk
+model.save_weights(checkpoint_folder+checkpoint_file)
+
+# Re-load the model from 2 files we saved:
+with open(checkpoint_folder+config_name) as json_file:
+  json_config = json_file.read()
+new_model = keras.models.model_from_json(json_config)
+new_model.load_weights(checkpoint_folder+checkpoint_file)
+
+new_predictions = new_model.predict(x_test)
+all_close = np.testing.assert_allclose(predictions, new_predictions, rtol=1e-6, atol=1e-6)
+print('New Predictions from loaded model from .h5 are identical to predictions before model.save: ({})'.format(all_close))
