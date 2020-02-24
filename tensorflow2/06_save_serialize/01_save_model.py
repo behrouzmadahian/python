@@ -1,10 +1,10 @@
 """
 - We can save the model + optimizer state (SavedModel or h5 format
-_ We can only save model weights .ckpt
+- We can only save model weights .ckpt
 
 Metrics and saving model:
 - Before saving the model, reset the model metrics- this way model before and after loading will have
-the same state(starting at ZERO)
+the same state(starting at ZERO??,)
 - - Metric states are not preserved by Model.Save_weights
 """
 import numpy as np
