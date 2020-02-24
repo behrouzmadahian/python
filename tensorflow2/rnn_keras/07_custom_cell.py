@@ -13,11 +13,14 @@ as well as pressure information. So the data representation could be:
 The following code provides an example of how to build a custom RNN cell that accepts such structured inputs.
 
 Define a custom cell that support nested input/output
+Any gating mechanism should be implemented in the call method and associated weihgts MUST be defined in __init__
 """
 from tensorflow import keras
 import tensorflow as tf
 
 nextedInput = collections.namedtupple('nestedInput', ['feature1', 'feature2'])
+print(nestedInput)
+
 nextedState = collections.namedtupple('nestedState', ['state1', 'state2'])
 
 class NestedCell(keras.layers.Layer):
