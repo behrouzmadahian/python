@@ -24,6 +24,10 @@ Call arguments to RNN cells:
            (optional, defaults to None).
 - initial_state: List of initial state tensors to be passed to the first call of the cell 
                 (optional, defaults to None which causes creation of zero-filled initial state tensors).
+
+In addition, a RNN layer can return its final internal state(s). The returned states can be used to 
+resume the RNN execution later, or to initialize another RNN. This setting is commonly used in the 
+encoder-decoder sequence-to-sequence model, where the encoder final state is used as the initial state of the decoder.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import collections
@@ -38,7 +42,7 @@ model = keras.Sequential()
 model.add(keras.layers.Embedding(input_dim=1000, output_dim=64))
 model.add(keras.layers.LSTM(units=128, activation='tanh', recurrent_activation='sigmoid',
                            use_bias=True, kernel_initializer='glorot_uniform', unit_forget_bias=True,
-                           dropout=0, return_sequences=False, return_state=False, go_backwards=False,
+                           dropout=0, return_sequences=False, return_state=True, go_backwards=False,
                            stateful=False, time_major=False, unroll=False))
 model.add(keras.layers.Dense(10))
 print(model.summary())
