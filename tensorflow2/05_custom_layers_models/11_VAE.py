@@ -100,6 +100,16 @@ vae = VariationalAutoEncoder(oriiginal_dim, 64, 32)
 optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 vae.compile(optimizer, loss=tf.keras.losses.MeanSquaredError())
 vae.fit(x_train, x_train, epoch=3, batch_size=64)
+save_path = ''
+vae.save(save_path +'VaeModel')
+reconstructed_old = vae(x_test[:64])
+loss_old = mse_loss_fn(x_test[:64], reconstructed_old)
+# load the VAE model and calculate loss on a batch of test:
+vae_new = keras.load_model(save_path +'VaeModel')
+reconstructed_new = vae_new(x_test[:64])
+loss_new = mse_loss_fn(x_test[:64], reconstructed_new)
+print('Loss before restoring on first batch of test: {}, and AFTER: {}'.format(loss_old, loss_new))
+                                  
 
 
       
