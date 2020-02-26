@@ -1,5 +1,11 @@
 """
+Early Stopping at Minimum loss!
+First example showcases the creation of a Callback that stops the Keras training 
+when the minimum of loss has been reached by mutating the attribute model.stop_training (boolean). 
+Optionally, the user can provide an argument patience to specify how many epochs the training should 
+wait before it eventually stops.
 
+tf.keras.callbacks.EarlyStopping provides a more complete and general implementation.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import tensorflow as tf
