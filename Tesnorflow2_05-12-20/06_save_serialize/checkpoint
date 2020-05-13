@@ -1,0 +1,2 @@
+model_checkpoint_path: "PATH to Checkpoint Foldermy_model"
+all_model_checkpoint_paths: "PATH to Checkpoint Foldermy_model"
